@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import TypedDict
+from dataclasses import dataclass, field
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -9,16 +9,19 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types.message import Message
 from dotenv import load_dotenv
 
-from src.llm_connector import process
+from src.llm_connector import LLMConnector
 
 load_dotenv()
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 MAX_MESSAGE_COUNT = 9
+ERROR_MESSAGE = "Извините, я сейчас не могу говорить, давайте свяжемся позже."
 
 
-class TgUserData(TypedDict):
+@dataclass
+class TgUserData:
     num_message: int
     state: str
+    llm_connector: LLMConnector = field(default_factory=LLMConnector)
 
 
 users: dict[int, TgUserData] = {}
@@ -41,20 +44,25 @@ async def main():
     @dp.channel_post(F.text)
     async def repl(message: Message) -> None:
         cid = message.chat.id
-        if cid not in users or users[cid]["state"] != "active":
+        if cid not in users or users[cid].state != "active":
             return
         human_message = message.text
-        users[cid]["num_message"] += 1
-        remaining_count = MAX_MESSAGE_COUNT - users[cid]["num_message"]
-        result_message, completed = await process(human_message,
-                                                  remaining_count,
-                                                  users[cid]["num_message"])
-        await message.answer(result_message)
-        if completed:
-            users[message.chat.id] = TgUserData(
-                num_message=0,
-                state="finished",
-            )
+        users[cid].num_message += 1
+        remaining_count = MAX_MESSAGE_COUNT - users[cid].num_message
+
+        try:
+            result_message, completed = await users[cid].llm_connector.process(
+                human_message,
+                remaining_count,
+                users[cid].num_message)
+            await message.answer(result_message)
+            if completed:
+                users[message.chat.id] = TgUserData(
+                    num_message=0,
+                    state="finished",
+                )
+        except:
+            await message.answer(ERROR_MESSAGE)
 
     @dp.channel_post(~F.text)
     async def empty(message: Message) -> None:

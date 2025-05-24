@@ -19,60 +19,59 @@ def get_llm_model(temperature: float = 0.7,
     )
 
 
-ERROR_MESSAGE = "Извините, я сейчас не могу говорить, давайте свяжемся позже."
+class LLMConnector:
+    def __init__(self):
+        self.history = [SystemMessage(content=INTERVIEW_PROMPT)]
 
-history = [SystemMessage(content=INTERVIEW_PROMPT)]
-
-
-async def send_user_message(remaining_count: int) -> str:
-    """Отправка сообщения кандидата llm"""
-    remaining_count_instruction = SystemMessage(
-        content=f"(Осталось {remaining_count} сообщений для уточнения профиля.)"
-    )
-    llm = get_llm_model()
-    response = await llm.ainvoke(history + [remaining_count_instruction])
-    logger.info(f"AI ответ: {response.content}")
-    return response.content
-
-
-async def evaluate_candidate() -> str:
-    """Финальная оценка кандидата."""
-    final_instruction = SystemMessage(content=FINAL_PROMPT)
-    llm = get_llm_model(temperature=0.0, max_tokens=20)
-    response = await llm.ainvoke(history + [final_instruction])
-    logger.info(f"Оценка AI: {response.content}")
-    return response.content
+    async def send_user_message(self,remaining_count: int) -> str:
+        """Отправка сообщения кандидата llm"""
+        remaining_count_instruction = SystemMessage(
+            content=f"(Осталось {remaining_count} сообщений для уточнения профиля.)"
+        )
+        llm = get_llm_model()
+        response = await llm.ainvoke(self.history + [remaining_count_instruction])
+        logger.info(f"AI ответ: {response.content}")
+        return response.content
 
 
-async def is_info_enough() -> bool:
-    """Проверка: достаточно ли данных для оценки роли кандидата."""
-    llm = get_llm_model(temperature=0.0, max_tokens=20)
-    check_prompt = SystemMessage(content=CHECK_COMPLETENESS_PROMPT)
-    response = await llm.ainvoke(history + [check_prompt])
-    answer = response.content.strip().lower()
-    logger.info(f"Промежуточная оценка: {answer}")
-    return answer == "[достаточно]"
+    async def evaluate_candidate(self) -> str:
+        """Финальная оценка кандидата."""
+        final_instruction = SystemMessage(content=FINAL_PROMPT)
+        llm = get_llm_model(temperature=0.0, max_tokens=20)
+        response = await llm.ainvoke(self.history + [final_instruction])
+        logger.info(f"Оценка AI: {response.content}")
+        return response.content
 
 
-async def process(
-        user_message: str,
-        remaining_count: int,
-        current_count: int
-) -> (str, bool):
-    history.append(HumanMessage(content=user_message))
-    logger.info(
-        f"Получено сообщение от пользователя: {user_message}. Осталось сообщений: {remaining_count}"
-    )
+    async def is_info_enough(self) -> bool:
+        """Проверка: достаточно ли данных для оценки роли кандидата."""
+        llm = get_llm_model(temperature=0.0, max_tokens=20)
+        check_prompt = SystemMessage(content=CHECK_COMPLETENESS_PROMPT)
+        response = await llm.ainvoke(self.history + [check_prompt])
+        answer = response.content.strip().lower()
+        logger.info(f"Промежуточная оценка: {answer}")
+        return answer == "[достаточно]"
 
-    if remaining_count >= 1:
 
-        if current_count > 3 and await is_info_enough():
-            logger.info("Информации достаточно — досрочная финальная оценка")
-            final_result = await evaluate_candidate()
-            return final_result, True
+    async def process(
+            self,
+            user_message: str,
+            remaining_count: int,
+            current_count: int
+    ) -> (str, bool):
+        self.history.append(HumanMessage(content=user_message))
+        logger.info(
+            f"Получено сообщение от пользователя: {user_message}. Осталось сообщений: {remaining_count}"
+        )
 
-        response_message = await send_user_message(remaining_count)
-        history.append(AIMessage(content=response_message))
-        return response_message, False
+        if remaining_count >= 1:
 
-    return await evaluate_candidate(), True
+            if current_count > 3 and await self.is_info_enough():
+                logger.info("Информации достаточно — досрочная финальная оценка")
+                final_result = await self.evaluate_candidate()
+                return final_result, True
+
+            response_message = await self.send_user_message(remaining_count)
+            self.history.append(AIMessage(content=response_message))
+            return response_message, False
+        return await self.evaluate_candidate(), True
