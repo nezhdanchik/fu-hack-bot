@@ -46,18 +46,19 @@ async def main():
         cid = message.chat.id
         if cid not in users or users[cid].state != "active":
             return
+        user_data = users[cid]
         human_message = message.text
-        users[cid].num_message += 1
-        remaining_count = MAX_MESSAGE_COUNT - users[cid].num_message
+        user_data.num_message += 1
+        remaining_count = MAX_MESSAGE_COUNT - user_data.num_message
 
         try:
-            result_message, completed = await users[cid].llm_connector.process(
+            result_message, completed = await user_data.llm_connector.process(
                 human_message,
                 remaining_count,
-                users[cid].num_message)
+                user_data.num_message)
             await message.answer(result_message)
             if completed:
-                users[message.chat.id] = TgUserData(
+                users[cid] = TgUserData(
                     num_message=0,
                     state="finished",
                 )
