@@ -13,7 +13,7 @@ from src.llm_connector import LLMConnector
 
 load_dotenv()
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-MAX_MESSAGE_COUNT = 9
+MAX_MESSAGE_COUNT = 10
 ERROR_MESSAGE = "Извините, я сейчас не могу говорить, давайте свяжемся позже."
 
 

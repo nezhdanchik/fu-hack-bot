@@ -50,7 +50,7 @@ class LLMConnector:
         response = await llm.ainvoke(self.history + [check_prompt])
         answer = response.content.strip().lower()
         logger.info(f"Промежуточная оценка: {answer}")
-        return answer == "[достаточно]"
+        return "[достаточно информации]" in answer
 
 
     async def process(
@@ -74,4 +74,5 @@ class LLMConnector:
             response_message = await self.send_user_message(remaining_count)
             self.history.append(AIMessage(content=response_message))
             return response_message, False
+        self.history.pop(0)
         return await self.evaluate_candidate(), True
