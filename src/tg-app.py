@@ -9,11 +9,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types.message import Message
 from dotenv import load_dotenv
 
-from src.llm_connector import send_user_message, evaluate_candidate
+from src.llm_connector import process
 
 load_dotenv()
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-MAX_MESSAGE_COUNT = 7
+MAX_MESSAGE_COUNT = 9
 
 
 class TgUserData(TypedDict):
@@ -46,16 +46,15 @@ async def main():
         human_message = message.text
         users[cid]["num_message"] += 1
         remaining_count = MAX_MESSAGE_COUNT - users[cid]["num_message"]
-        if remaining_count >= 1:
-            r = await send_user_message(human_message, remaining_count)
-            await message.answer(r)
-        else:
+        result_message, completed = await process(human_message,
+                                                  remaining_count,
+                                                  users[cid]["num_message"])
+        await message.answer(result_message)
+        if completed:
             users[message.chat.id] = TgUserData(
                 num_message=0,
                 state="finished",
             )
-            r = await evaluate_candidate(human_message)
-            await message.answer(r)
 
     @dp.channel_post(~F.text)
     async def empty(message: Message) -> None:

@@ -1,53 +1,78 @@
 import logging
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from prompts import INTERVIEW_PROMPT, FINAL_PROMPT
+from prompts import INTERVIEW_PROMPT, FINAL_PROMPT, CHECK_COMPLETENESS_PROMPT
 
 logger = logging.getLogger(__name__)
 
 vllm_api_base = "https://51.250.28.28:10000/gpb_gpt_hack_2025/v1"
 
-llm = ChatOpenAI(
-    model="leon-se/gemma-3-27b-it-FP8-Dynamic",
-    openai_api_base=vllm_api_base,
-    openai_api_key="EMPTY",
-    temperature=0.7,
-    max_tokens=512,
-)
+
+def get_llm_model(temperature: float = 0.7,
+                  max_tokens: int = 512) -> ChatOpenAI:
+    return ChatOpenAI(
+        model="leon-se/gemma-3-27b-it-FP8-Dynamic",
+        openai_api_base=vllm_api_base,
+        openai_api_key="EMPTY",
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
 
 ERROR_MESSAGE = "Извините, я сейчас не могу говорить, давайте свяжемся позже."
 
 history = [SystemMessage(content=INTERVIEW_PROMPT)]
 
 
-async def send_user_message(prompt: str, remaining_count: int) -> str:
+async def send_user_message(remaining_count: int) -> str:
     """Отправка сообщения кандидата llm"""
-    combined_prompt = f"{prompt}\n\n(Осталось {remaining_count} сообщений для уточнения профиля.)"
-    logger.info(f"Сообщение пользователя: {combined_prompt}")
-
-    history.append(HumanMessage(content=combined_prompt))
-
-    try:
-        response = await llm.ainvoke(history)
-        logger.info(f"AI response: {response.content}")
-        history.append(AIMessage(content=response.content))
-        return response.content
-    except Exception as e:
-        logger.exception("Ошибка при запросе к LLM")
-        return ERROR_MESSAGE
+    remaining_count_instruction = SystemMessage(
+        content=f"(Осталось {remaining_count} сообщений для уточнения профиля.)"
+    )
+    llm = get_llm_model()
+    response = await llm.ainvoke(history + [remaining_count_instruction])
+    logger.info(f"AI ответ: {response.content}")
+    return response.content
 
 
-async def evaluate_candidate(prompt: str) -> str:
+async def evaluate_candidate() -> str:
     """Финальная оценка кандидата."""
-    logger.info("Финальная оценка кандидата началась")
-
-    history.append(HumanMessage(content=prompt))
     final_instruction = SystemMessage(content=FINAL_PROMPT)
+    llm = get_llm_model(temperature=0.0, max_tokens=20)
+    response = await llm.ainvoke(history + [final_instruction])
+    logger.info(f"Оценка AI: {response.content}")
+    return response.content
 
-    try:
-        response = await llm.ainvoke(history + [final_instruction])
-        logger.info(f"Оценка завершена. Результат: {response.content}")
-        return response.content
-    except Exception as e:
-        logger.exception("Ошибка при финальной оценке")
-        return ERROR_MESSAGE
+
+async def is_info_enough() -> bool:
+    """Проверка: достаточно ли данных для оценки роли кандидата."""
+    llm = get_llm_model(temperature=0.0, max_tokens=20)
+    check_prompt = SystemMessage(content=CHECK_COMPLETENESS_PROMPT)
+    response = await llm.ainvoke(history + [check_prompt])
+    answer = response.content.strip().lower()
+    logger.info(f"Промежуточная оценка: {answer}")
+    return answer == "[достаточно]"
+
+
+async def process(
+        user_message: str,
+        remaining_count: int,
+        current_count: int
+) -> (str, bool):
+    history.append(HumanMessage(content=user_message))
+    logger.info(
+        f"Получено сообщение от пользователя: {user_message}. Осталось сообщений: {remaining_count}"
+    )
+
+    if remaining_count >= 1:
+
+        if current_count > 3 and await is_info_enough():
+            logger.info("Информации достаточно — досрочная финальная оценка")
+            final_result = await evaluate_candidate()
+            return final_result, True
+
+        response_message = await send_user_message(remaining_count)
+        history.append(AIMessage(content=response_message))
+        return response_message, False
+
+    return await evaluate_candidate(), True
