@@ -37,7 +37,7 @@ class LLMConnector:
     async def evaluate_candidate(self) -> str:
         """Финальная оценка кандидата."""
         final_instruction = SystemMessage(content=FINAL_PROMPT)
-        llm = get_llm_model(temperature=0.0, max_tokens=20)
+        llm = get_llm_model(temperature=0.1, max_tokens=20)
         response = await llm.ainvoke(self.history + [final_instruction])
         logger.info(f"Оценка AI: {response.content}")
         return response.content
@@ -45,7 +45,7 @@ class LLMConnector:
 
     async def is_info_enough(self) -> bool:
         """Проверка: достаточно ли данных для оценки роли кандидата."""
-        llm = get_llm_model(temperature=0.0, max_tokens=20)
+        llm = get_llm_model(temperature=0.1, max_tokens=20)
         check_prompt = SystemMessage(content=CHECK_COMPLETENESS_PROMPT)
         response = await llm.ainvoke(self.history + [check_prompt])
         answer = response.content.strip().lower()
